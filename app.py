@@ -178,7 +178,7 @@ with st.sidebar:
 # ---------- Tabs ----------
 selected_tab = st.radio(
     "Select a tab",
-    ["Profile", "About", "Chat Upload", "Output Interface", "Dummy"],
+    ["Profile", "About", "Chat Upload", "Output Interface"],
     horizontal=True,
     key="selected_tab",
 )
@@ -298,12 +298,13 @@ elif selected_tab == "Output Interface":
         summary_cols[2].metric("Source", st.session_state.get("chat_source_label", "Chat"))
 
         st.markdown("### Commitment analysis")
-        provider = st.selectbox(
-            "AI provider",
-            ["Gemini", "Local Gemma (Ollama)"],
-            key="analysis_provider",
+        provider = st.radio(
+            "Choose an analysis provider",
+            ["Gemini API", "Local Gemma 4 (Ollama)"],
+            horizontal=True,
+            key="analysis_provider_choice",
         )
-        provider_key = "gemini" if provider == "Gemini" else "ollama"
+        provider_key = "gemini" if provider == "Gemini API" else "ollama"
         if provider_key == "gemini":
             configured_model = get_config_value(
                 "GEMINI_MODEL", "gemma-4-31b-it"
@@ -330,17 +331,27 @@ elif selected_tab == "Output Interface":
                 "Gemini API key",
                 type="password",
                 key="gemini_api_key",
-                help="Enter your key here, or set GEMINI_API_KEY in the environment.",
+                help="Enter your key here, or set GEMINI_API_KEY in .env.",
+            )
+            st.caption(
+                "Gemini sends the conversation to Google's API. Your API key can "
+                "be read from .env when the field is left blank."
             )
         else:
+            configured_ollama_model = get_config_value(
+                "OLLAMA_MODEL", "gemma4:latest"
+            )
             model = st.text_input(
-                "Ollama model tag",
-                value="gemma4:latest",
+                "Local Gemma 4 model tag",
+                value=configured_ollama_model,
                 key="ollama_model",
-                help="Use the exact model tag installed in Ollama.",
+                help="Must match the Gemma 4 model tag installed in Ollama.",
             )
             api_key = None
-            st.caption("Ollama must be running locally with the selected model available.")
+            st.caption(
+                "Local mode sends the conversation to Ollama on this machine. "
+                "Start Ollama and ensure the selected Gemma 4 model is available."
+            )
 
         custom_prompt = st.text_area(
             "Analysis instructions (optional)",
@@ -397,16 +408,6 @@ elif selected_tab == "Output Interface":
                 st.table(display_rows)
             else:
                 st.info("The AI found no commitments supported by the provided chat.")
-
-else:
-    st.subheader("Dummy Tab")
-    st.markdown("This section is intentionally left as a placeholder for future features such as dashboards, filters, or additional analysis modules.")
-
-    st.write("Planned additions:")
-    st.write("- Promise risk scoring")
-    st.write("- Meeting summary")
-    st.write("- Team-wise progress dashboard")
-    st.write("- Export to PDF / CSV")
 
 # ---------- Footer ----------
 st.markdown("---")

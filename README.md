@@ -81,14 +81,16 @@ answer = analyze_chats(
 print(answer)
 ```
 
-For Gemini, enter the API key in the password field on the Output Interface or
+On the Output Interface, select **Gemini API** or **Local Gemma 4 (Ollama)**.
+For Gemini, enter the API key in the password field or
 replace the empty `GEMINI_API_KEY=` value in the local `.env` file. The app reads
 that file on each app rerun and analysis request. Set `GEMINI_MODEL` to the
 exact API model ID (defaults to `gemma-4-31b-it`); use **Reload model** on the
 Output Interface to refresh the model field from `.env`. Never put API keys in
 source code. If a key was previously added to source code, revoke it and create
-a replacement. For local analysis, start Ollama, pull/run a Gemma 4 model, and use
-`provider="ollama"`. The default Ollama model tag is `gemma4:latest`; set
+a replacement. For local analysis, start Ollama and pull/run an available Gemma 4
+model before selecting local mode; the app calls Ollama's local chat API. The
+default Ollama model tag is `gemma4:latest`; set
 `OLLAMA_MODEL` if the tag available on your machine differs. The Ollama server
 URL defaults to `http://localhost:11434` and can be changed with
 `OLLAMA_BASE_URL`.
