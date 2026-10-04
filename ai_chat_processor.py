@@ -2,6 +2,8 @@
 
 import json
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
@@ -48,14 +50,27 @@ def _post_json(
         headers=request_headers,
         method="POST",
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except HTTPError as error:
-        error_body = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"AI provider returned HTTP {error.code}: {error_body}"
-        ) from error
+    result = None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            break
+        except HTTPError as error:
+            error_body = error.read().decode("utf-8", errors="replace")
+            if error.code in (500, 502, 503, 504) and attempt < 2:
+                time.sleep(attempt + 1)
+                continue
+            if error.code in (500, 502, 503, 504):
+                raise RuntimeError(
+                    "AI provider returned HTTP {} after 3 attempts. This is usually "
+                    "a temporary provider or model issue; wait and retry, and verify "
+                    "that the configured model supports generateContent. Details: {}"
+                    .format(error.code, error_body)
+                ) from error
+            raise RuntimeError(
+                "AI provider returned HTTP {}: {}".format(error.code, error_body)
+            ) from error
     except URLError as error:
         raise RuntimeError(f"Could not connect to AI provider: {error.reason}") from error
     except json.JSONDecodeError as error:
@@ -76,6 +91,51 @@ def _chat_prompt(
         "details where relevant. Do not invent missing information.\n\n"
         f"{serialized_messages}"
     )
+
+
+def parse_commitments(response: str) -> List[Dict[str, str]]:
+    """Parse Gemini's JSON commitments into consistent table rows."""
+    content = response.strip()
+    fenced_match = re.match(
+        r"^```(?:json)?\s*(.*?)\s*```$", content, flags=re.IGNORECASE | re.DOTALL
+    )
+    if fenced_match:
+        content = fenced_match.group(1)
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "The AI response was not valid commitments JSON. Please analyze again."
+        ) from error
+
+    if isinstance(parsed, dict):
+        parsed = parsed.get("commitments")
+    if not isinstance(parsed, list):
+        raise ValueError("The AI response must contain a JSON list of commitments.")
+
+    columns = (
+        "commitment",
+        "committer_name",
+        "status",
+        "expected_done_date",
+        "special_remarks",
+        "proof",
+    )
+    rows = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            raise ValueError("Each AI commitment must be a JSON object.")
+        row = {}
+        for column in columns:
+            value = item.get(column)
+            row[column] = (
+                str(value).strip()
+                if value is not None and str(value).strip()
+                else "Not specified"
+            )
+        rows.append(row)
+    return rows
 
 
 def analyze_chats(

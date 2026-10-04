@@ -41,7 +41,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The app will open in the browser and show five tabs:
+The app opens on **Chat Upload** and provides five tabs:
 
 1. Profile
 2. About
@@ -92,3 +92,8 @@ a replacement. For local analysis, start Ollama, pull/run a Gemma 4 model, and u
 `OLLAMA_MODEL` if the tag available on your machine differs. The Ollama server
 URL defaults to `http://localhost:11434` and can be changed with
 `OLLAMA_BASE_URL`.
+
+AI results are requested as structured JSON and shown in a commitments table
+with commitment, committer, status, expected completion date, remarks, and the
+supporting chat quote. Missing fields are marked “Not specified”; the prompt
+instructs the model not to infer unsupported facts.

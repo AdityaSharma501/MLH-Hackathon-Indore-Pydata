@@ -1,6 +1,6 @@
 import streamlit as st
 
-from ai_chat_processor import analyze_chats, get_config_value
+from ai_chat_processor import analyze_chats, get_config_value, parse_commitments
 from chat_extractor import extract_chat_messages
 
 st.set_page_config(
@@ -13,37 +13,63 @@ st.markdown(
     """
     <style>
     .stApp {
-        background: linear-gradient(135deg, #f3f8fc 0%, #ffffff 58%, #edf4f8 100%);
+        background: #ffffff;
+        color: #102a43;
     }
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #e5f2fa 0%, #f5f8fa 100%);
-        border-right: 1px solid #d4e0e8;
+        background: #f2f5f8;
+        border-right: 1px solid #d8e0e8;
     }
-    h1, h2, h3 {
-        color: #263746;
+    h2, h3 {
+        color: #102a43;
     }
     h1 {
         padding-bottom: 0.35rem;
-        border-bottom: 3px solid #c4455a;
+        color: #ff9f1c;
+        border-bottom: 3px solid #ff9f1c;
+    }
+    [data-testid="stWidgetLabel"], [data-testid="stCaptionContainer"],
+    [data-testid="stMarkdownContainer"] {
+        color: #102a43;
     }
     div.stButton > button {
         color: #ffffff;
-        background: linear-gradient(90deg, #bd3e53, #d55b68);
-        border: 1px solid #ad3449;
+        background: linear-gradient(90deg, #f28c00, #ffad33);
+        border: 1px solid #e88700;
         border-radius: 8px;
     }
     div.stButton > button:hover {
         color: #ffffff;
-        background: #a93246;
-        border-color: #92283c;
+        background: #d97700;
+        border-color: #c66d00;
     }
     [data-testid="stMetric"] {
-        background: #ffffff;
-        border: 1px solid #d9e2e8;
-        border-left: 4px solid #8fc5e3;
+        background: #f2f5f8;
+        border: 1px solid #d8e0e8;
+        border-left: 4px solid #ff9f1c;
         padding: 0.85rem;
         border-radius: 9px;
-        box-shadow: 0 2px 8px rgba(38, 55, 70, 0.06);
+        box-shadow: 0 2px 8px rgba(16, 42, 67, 0.08);
+    }
+    [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {
+        color: #102a43;
+    }
+    .home-description {
+        background: linear-gradient(120deg, #15324d, #102a43);
+        border: 1px solid #294963;
+        border-left: 5px solid #ff9f1c;
+        border-radius: 12px;
+        color: #ffffff;
+        margin: 0.5rem 0 1.5rem;
+        padding: 1rem 1.5rem;
+    }
+    .home-description ul {
+        margin: 0;
+        padding-left: 1.3rem;
+    }
+    .home-description li {
+        color: #ffffff;
+        margin: 0.35rem 0;
     }
     div.stButton {
         width: 100%;
@@ -119,9 +145,25 @@ def refresh_gemini_model() -> None:
     st.session_state["_gemini_model_config"] = configured_model
 
 
+if "selected_tab" not in st.session_state:
+    st.session_state["selected_tab"] = "Chat Upload"
+
 # ---------- App header ----------
-st.title("Promise Radar")
+st.title("Promise Radar (Evidence Based)")
 st.caption("AI-powered conversation intelligence for promises, commitments, and follow-ups")
+if st.session_state["selected_tab"] == "Chat Upload":
+    st.markdown(
+        """
+        <div class="home-description">
+            <ul>
+                <li>Turn conversations into clear commitments.</li>
+                <li>See who is responsible and when work is due.</li>
+                <li>Review each finding with its original chat proof.</li>
+            </ul>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ---------- Sidebar ----------
 with st.sidebar:
@@ -134,9 +176,6 @@ with st.sidebar:
     st.write("• Microsoft Teams exports")
 
 # ---------- Tabs ----------
-if "selected_tab" not in st.session_state:
-    st.session_state["selected_tab"] = "Profile"
-
 selected_tab = st.radio(
     "Select a tab",
     ["Profile", "About", "Chat Upload", "Output Interface", "Dummy"],
@@ -152,7 +191,7 @@ if selected_tab == "Profile":
         st.markdown(
             """
             <div style='background:linear-gradient(135deg,#dff1fb,#f2f5f7); padding:20px; border:1px solid #d2e3ec; border-radius:12px; text-align:center;'>
-                <h3 style='margin:0; color:#b83a50;'>👤</h3>
+                <h3 style='margin:0; color:#f28c00;'>👤</h3>
             </div>
             """,
             unsafe_allow_html=True,
@@ -258,22 +297,7 @@ elif selected_tab == "Output Interface":
         summary_cols[1].metric("Participants", str(len(participants)))
         summary_cols[2].metric("Source", st.session_state.get("chat_source_label", "Chat"))
 
-        analyze_clicked = st.button("Analyze Conversation")
-
-        st.markdown("### Extracted conversation")
-        for message in messages:
-            timestamp = message.get("timestamp")
-            heading = message["user"]
-            if timestamp:
-                heading += " · " + timestamp
-            st.markdown("**{}**".format(heading))
-            st.write(message["text"])
-            details = message.get("details", {})
-            if details:
-                st.caption("Additional details: {}".format(details))
-            st.markdown("---")
-
-        st.markdown("### Generate an AI analysis")
+        st.markdown("### Commitment analysis")
         provider = st.selectbox(
             "AI provider",
             ["Gemini", "Local Gemma (Ollama)"],
@@ -319,15 +343,26 @@ elif selected_tab == "Output Interface":
             st.caption("Ollama must be running locally with the selected model available.")
 
         custom_prompt = st.text_area(
-            "Analysis instructions",
+            "Analysis instructions (optional)",
             value=(
-                "Summarize the promises, commitments, owners, deadlines, and action items. "
-                "Highlight unresolved follow-ups and risks. Do not invent missing details."
+                "Extract each explicit or strongly implied promise, commitment, task, "
+                "or follow-up from the chat. Return ONLY valid JSON in this exact shape: "
+                '{"commitments":[{"commitment":"short description",'
+                '"committer_name":"person responsible",'
+                '"status":"Pending | In progress | Done | Unclear",'
+                '"expected_done_date":"date or deadline exactly as stated, otherwise Not specified",'
+                '"special_remarks":"risks, dependencies, or other useful note; otherwise Not specified",'
+                '"proof":"exact supporting chat quote, with speaker and timestamp if available"}]}. '
+                "Use an empty commitments array if there are no commitments. Do not infer "
+                "a date, owner, status, or evidence that the chat does not support."
             ),
-            height=120,
+            height=210,
         )
+        analyze_clicked = st.button("Analyze Conversation")
+
         if analyze_clicked:
             st.session_state["ai_result"] = ""
+            st.session_state["ai_commitments"] = None
             try:
                 with st.spinner("Generating analysis..."):
                     result = analyze_chats(
@@ -337,14 +372,31 @@ elif selected_tab == "Output Interface":
                         model=model.strip() or None,
                         api_key=api_key or None,
                     )
+                    commitments = parse_commitments(result)
             except (ValueError, RuntimeError) as error:
                 st.error(str(error))
             else:
                 st.session_state["ai_result"] = result
+                st.session_state["ai_commitments"] = commitments
 
-        if st.session_state.get("ai_result"):
-            st.markdown("### AI Analysis")
-            st.markdown(st.session_state["ai_result"])
+        commitments = st.session_state.get("ai_commitments")
+        if commitments is not None:
+            st.markdown("### AI results")
+            if commitments:
+                display_rows = [
+                    {
+                        "Commitment": item["commitment"],
+                        "Committer": item["committer_name"],
+                        "Status": item["status"],
+                        "Expected done date": item["expected_done_date"],
+                        "Special remarks": item["special_remarks"],
+                        "Chat proof": item["proof"],
+                    }
+                    for item in commitments
+                ]
+                st.table(display_rows)
+            else:
+                st.info("The AI found no commitments supported by the provided chat.")
 
 else:
     st.subheader("Dummy Tab")
