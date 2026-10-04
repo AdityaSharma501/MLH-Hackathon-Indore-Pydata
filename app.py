@@ -258,6 +258,8 @@ elif selected_tab == "Output Interface":
         summary_cols[1].metric("Participants", str(len(participants)))
         summary_cols[2].metric("Source", st.session_state.get("chat_source_label", "Chat"))
 
+        analyze_clicked = st.button("Analyze Conversation")
+
         st.markdown("### Extracted conversation")
         for message in messages:
             timestamp = message.get("timestamp")
@@ -324,7 +326,7 @@ elif selected_tab == "Output Interface":
             ),
             height=120,
         )
-        if st.button("Analyze Conversation"):
+        if analyze_clicked:
             st.session_state["ai_result"] = ""
             try:
                 with st.spinner("Generating analysis..."):
