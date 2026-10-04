@@ -97,3 +97,8 @@ AI results are requested as structured JSON and shown in a commitments table
 with commitment, committer, status, expected completion date, remarks, and the
 supporting chat quote. Missing fields are marked “Not specified”; the prompt
 instructs the model not to infer unsupported facts.
+
+Temporary AI provider errors (HTTP 500, 502, 503, or 504) are retried up to
+three times. If the provider continues to fail, check service status and confirm
+the configured Gemini model ID supports the `generateContent` API. The output
+screen shows the commitment evidence but does not repeat the full source chat.

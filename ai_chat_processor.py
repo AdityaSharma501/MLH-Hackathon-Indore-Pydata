@@ -71,10 +71,12 @@ def _post_json(
             raise RuntimeError(
                 "AI provider returned HTTP {}: {}".format(error.code, error_body)
             ) from error
-    except URLError as error:
-        raise RuntimeError(f"Could not connect to AI provider: {error.reason}") from error
-    except json.JSONDecodeError as error:
-        raise RuntimeError("AI provider returned invalid JSON.") from error
+        except URLError as error:
+            raise RuntimeError(
+                f"Could not connect to AI provider: {error.reason}"
+            ) from error
+        except json.JSONDecodeError as error:
+            raise RuntimeError("AI provider returned invalid JSON.") from error
 
     if not isinstance(result, dict):
         raise RuntimeError("AI provider returned an unexpected response.")
