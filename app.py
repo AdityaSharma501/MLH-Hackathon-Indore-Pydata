@@ -147,11 +147,29 @@ st.markdown(
     .demo-status {
         display: inline-block;
         padding: 0.2rem 0.65rem;
-        color: #815000;
-        background: #fff0ce;
         border-radius: 999px;
         font-weight: 700;
         white-space: nowrap;
+    }
+    .demo-status--done {
+        color: #17623f;
+        background: #d9f3e5;
+    }
+    .demo-status--progress {
+        color: #145b78;
+        background: #d9f0fa;
+    }
+    .demo-status--pending {
+        color: #815000;
+        background: #fff0ce;
+    }
+    .demo-status--blocked {
+        color: #8a2637;
+        background: #fde1e5;
+    }
+    .demo-status--unclear {
+        color: #4d5965;
+        background: #e8edf1;
     }
     .demo-confidence {
         color: #176b87;
@@ -198,6 +216,57 @@ def commitment_status_bucket(status: str) -> str:
     if "block" in normalized:
         return "Blocked"
     return "Unclear"
+
+
+def render_commitment_table(owner: str, commitments: list) -> None:
+    status_styles = {
+        "Done": "demo-status--done",
+        "In Progress": "demo-status--progress",
+        "Pending": "demo-status--pending",
+        "Blocked": "demo-status--blocked",
+        "Unclear": "demo-status--unclear",
+    }
+    table_rows = "".join(
+        "<tr><td>{}</td><td>{}</td><td>{}</td>"
+        '<td><span class="demo-status {}">{}</span></td>'
+        '<td><span class="demo-confidence">{}</span></td>'
+        "<td>{}</td><td>{}</td></tr>".format(
+            escape(str(item.get("commitment") or "Not specified")),
+            escape(str(item.get("committed_date") or "Not specified")),
+            escape(
+                str(
+                    item.get("deadline")
+                    or item.get("expected_done_date")
+                    or "Not specified"
+                )
+            ),
+            status_styles[
+                commitment_status_bucket(str(item.get("status") or "Unclear"))
+            ],
+            escape(str(item.get("status") or "Unclear").title()),
+            (
+                "{:.0%}".format(item["confidence"])
+                if isinstance(item.get("confidence"), (int, float))
+                else "Not specified"
+            ),
+            escape(
+                str(item.get("special_remarks") or "Not specified")
+            ),
+            escape(
+                str(item.get("evidence") or item.get("proof") or "Not specified")
+            ),
+        )
+        for item in commitments
+    )
+    st.markdown(
+        '<div class="demo-owner">👤 {}</div>'
+        '<div class="demo-table-wrap"><table class="demo-table">'
+        "<thead><tr><th>Committed task</th><th>Committed date</th>"
+        "<th>Deadline</th><th>Status</th><th>Confidence</th>"
+        "<th>Special remarks</th><th>Chat evidence</th></tr></thead>"
+        "<tbody>{}</tbody></table></div>".format(escape(owner), table_rows),
+        unsafe_allow_html=True,
+    )
 
 
 def submit_chat_input() -> None:
@@ -498,24 +567,34 @@ elif selected_tab == "Output Interface":
         if commitments is not None:
             st.markdown("### AI results")
             if commitments:
-                display_rows = [
-                    {
-                        "Commitment": item["commitment"],
-                        "Owner": item["owner"],
-                        "Committed date": item["committed_date"],
-                        "Deadline": item["deadline"],
-                        "Status": item["status"],
-                        "Confidence": (
-                            "{:.0%}".format(item["confidence"])
-                            if item["confidence"] is not None
-                            else "Not specified"
-                        ),
-                        "Special remarks": item["special_remarks"],
-                        "Evidence": item["evidence"],
-                    }
+                owners = sorted(set(item["owner"] for item in commitments))
+                pending_count = sum(
+                    1
                     for item in commitments
-                ]
-                st.table(display_rows)
+                    if commitment_status_bucket(item["status"]) == "Pending"
+                )
+                st.markdown(
+                    """
+                    <div class="demo-metrics">
+                        <div class="demo-metric demo-metric--blue">
+                            <strong>{}</strong><span>Total commitments</span>
+                        </div>
+                        <div class="demo-metric demo-metric--orange">
+                            <strong>{}</strong><span>Owners</span>
+                        </div>
+                        <div class="demo-metric demo-metric--green">
+                            <strong>{}</strong><span>Pending tasks</span>
+                        </div>
+                    </div>
+                    """.format(len(commitments), len(owners), pending_count),
+                    unsafe_allow_html=True,
+                )
+                st.markdown("### Commitments by owner")
+                for owner in owners:
+                    owner_commitments = [
+                        item for item in commitments if item["owner"] == owner
+                    ]
+                    render_commitment_table(owner, owner_commitments)
             else:
                 st.info("The AI found no commitments supported by the provided chat.")
 
@@ -648,7 +727,16 @@ elif selected_tab == "Dummy Analysis":
         ]
         """
     )
-    sample_owners = sorted(set(item["owner"] for item in sample_commitments))
+    sample_owners = sorted(
+        set(
+            str(
+                item.get("owner")
+                or item.get("committer_name")
+                or "Unassigned"
+            )
+            for item in sample_commitments
+        )
+    )
     pending_count = sum(
         1
         for item in sample_commitments
@@ -674,38 +762,16 @@ elif selected_tab == "Dummy Analysis":
     st.markdown("### Commitments by owner")
     for owner in sample_owners:
         owner_items = [
-            item for item in sample_commitments if item["owner"] == owner
-        ]
-        table_rows = "".join(
-            "<tr><td>{}</td><td>{}</td><td>{}</td>"
-            '<td><span class="demo-status">{}</span></td>'
-            '<td><span class="demo-confidence">{}</span></td>'
-            "<td>{}</td><td>{}</td></tr>".format(
-                escape(item["commitment"]),
-                escape(item["committed_date"]),
-                escape(item["deadline"]),
-                escape(item["status"].title()),
-                (
-                    "{:.0%}".format(item["confidence"])
-                    if item["confidence"] is not None
-                    else "Not specified"
-                ),
-                escape(item["special_remarks"]),
-                escape(item["evidence"]),
+            item
+            for item in sample_commitments
+            if str(
+                item.get("owner")
+                or item.get("committer_name")
+                or "Unassigned"
             )
-            for item in owner_items
-        )
-        st.markdown(
-            '<div class="demo-owner">👤 {}</div>'
-            '<div class="demo-table-wrap"><table class="demo-table">'
-            "<thead><tr><th>Committed task</th><th>Committed date</th>"
-            "<th>Deadline</th><th>Status</th><th>Confidence</th>"
-            "<th>Special remarks</th><th>Chat evidence</th></tr></thead>"
-            "<tbody>{}</tbody></table></div>".format(
-                escape(owner), table_rows
-            ),
-            unsafe_allow_html=True,
-        )
+            == owner
+        ]
+        render_commitment_table(owner, owner_items)
 
 # ---------- Footer ----------
 st.markdown("---")
