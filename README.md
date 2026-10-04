@@ -47,7 +47,10 @@ The app opens on **Chat Upload** and provides five tabs:
 2. About
 3. Chat Upload
 4. Output Interface
-5. Dummy
+5. Dummy Analysis
+
+The **Dummy Analysis** tab demonstrates sample AI commitments grouped into
+owner-wise tables. It does not call an AI provider.
 
 ## Using chat input
 
@@ -95,10 +98,17 @@ default Ollama model tag is `gemma4:latest`; set
 URL defaults to `http://localhost:11434` and can be changed with
 `OLLAMA_BASE_URL`.
 
-AI results are requested as structured JSON and shown in a commitments table
-with commitment, committer, status, expected completion date, remarks, and the
-supporting chat quote. Missing fields are marked “Not specified”; the prompt
-instructs the model not to infer unsupported facts.
+AI results are requested as a JSON array containing `owner`, `commitment`,
+`committed_date`, `deadline`, `status`, `confidence`, `evidence`, and
+`special_remarks`. The output shows owner-wise details, dates, status,
+confidence, and the exact supporting chat quote. Missing fields display as
+“Not specified”; committed dates are only included when the source message has
+a timestamp.
+
+After analysis, **Participant status profiles** provide an expandable profile
+for each chat participant, with assigned commitments grouped as Done, In
+Progress, Pending, Blocked, or Unclear. Work assigned to a name that does not
+match a chat participant is listed separately.
 
 Temporary AI provider errors (HTTP 500, 502, 503, or 504) are retried up to
 three times. If the provider continues to fail, check service status and confirm

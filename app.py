@@ -1,3 +1,5 @@
+from html import escape
+
 import streamlit as st
 
 from ai_chat_processor import analyze_chats, get_config_value, parse_commitments
@@ -71,6 +73,91 @@ st.markdown(
         color: #ffffff;
         margin: 0.35rem 0;
     }
+    .demo-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin: 1rem 0 1.5rem;
+    }
+    .demo-metric {
+        color: #ffffff;
+        padding: 1rem 1.2rem;
+        border-radius: 12px;
+        box-shadow: 0 5px 14px rgba(16, 42, 67, 0.12);
+    }
+    .demo-metric strong {
+        display: block;
+        font-size: 1.8rem;
+        line-height: 1.2;
+    }
+    .demo-metric span {
+        font-size: 0.9rem;
+        opacity: 0.95;
+    }
+    .demo-metric--blue {
+        background: linear-gradient(120deg, #176b87, #2589a2);
+    }
+    .demo-metric--orange {
+        background: linear-gradient(120deg, #e87500, #ffa52e);
+    }
+    .demo-metric--green {
+        background: linear-gradient(120deg, #23805b, #38a879);
+    }
+    .demo-owner {
+        margin: 1.5rem 0 0.75rem;
+        padding: 0.8rem 1rem;
+        color: #ffffff;
+        background: linear-gradient(100deg, #102a43, #176b87);
+        border-left: 5px solid #ff9f1c;
+        border-radius: 9px;
+        font-size: 1.15rem;
+        font-weight: 700;
+    }
+    .demo-table-wrap {
+        overflow-x: auto;
+        border: 1px solid #d6e0e8;
+        border-radius: 10px;
+        box-shadow: 0 4px 14px rgba(16, 42, 67, 0.08);
+    }
+    table.demo-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #ffffff;
+        color: #102a43;
+    }
+    .demo-table th {
+        padding: 0.75rem;
+        text-align: left;
+        background: #eaf2f7;
+        color: #102a43;
+        border-bottom: 2px solid #ff9f1c;
+        white-space: nowrap;
+    }
+    .demo-table td {
+        padding: 0.75rem;
+        vertical-align: top;
+        border-bottom: 1px solid #e4ebf0;
+    }
+    .demo-table tbody tr:nth-child(even) {
+        background: #f7fafc;
+    }
+    .demo-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+    .demo-status {
+        display: inline-block;
+        padding: 0.2rem 0.65rem;
+        color: #815000;
+        background: #fff0ce;
+        border-radius: 999px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .demo-confidence {
+        color: #176b87;
+        font-weight: 700;
+        white-space: nowrap;
+    }
     div.stButton {
         width: 100%;
     }
@@ -98,6 +185,19 @@ def format_file_size(size_bytes: int) -> str:
     if size_bytes < 1024 * 1024:
         return f"{size_bytes / 1024:.1f} KB"
     return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+def commitment_status_bucket(status: str) -> str:
+    normalized = status.strip().lower()
+    if normalized in ("done", "complete", "completed", "finished", "closed"):
+        return "Done"
+    if normalized in ("in progress", "in-progress", "ongoing", "started"):
+        return "In Progress"
+    if normalized in ("pending", "open", "to do", "todo", "not started"):
+        return "Pending"
+    if "block" in normalized:
+        return "Blocked"
+    return "Unclear"
 
 
 def submit_chat_input() -> None:
@@ -178,7 +278,7 @@ with st.sidebar:
 # ---------- Tabs ----------
 selected_tab = st.radio(
     "Select a tab",
-    ["Profile", "About", "Chat Upload", "Output Interface"],
+    ["Profile", "About", "Chat Upload", "Output Interface", "Dummy Analysis"],
     horizontal=True,
     key="selected_tab",
 )
@@ -356,16 +456,20 @@ elif selected_tab == "Output Interface":
         custom_prompt = st.text_area(
             "Analysis instructions (optional)",
             value=(
-                "Extract each explicit or strongly implied promise, commitment, task, "
-                "or follow-up from the chat. Return ONLY valid JSON in this exact shape: "
-                '{"commitments":[{"commitment":"short description",'
-                '"committer_name":"person responsible",'
-                '"status":"Pending | In progress | Done | Unclear",'
-                '"expected_done_date":"date or deadline exactly as stated, otherwise Not specified",'
-                '"special_remarks":"risks, dependencies, or other useful note; otherwise Not specified",'
-                '"proof":"exact supporting chat quote, with speaker and timestamp if available"}]}. '
-                "Use an empty commitments array if there are no commitments. Do not infer "
-                "a date, owner, status, or evidence that the chat does not support."
+                "Extract explicit or strongly implied promises, commitments, tasks, or "
+                "follow-ups. Return ONLY a valid JSON array (not markdown and no wrapper "
+                "object). Every item must use exactly these keys: owner (speaker who "
+                "commits to do the work, or null), commitment (short task description), "
+                "committed_date (date/time of the source message, or null if unavailable), "
+                "deadline (stated due date or null), status (pending, in progress, done, "
+                "blocked, or unclear), confidence (number from 0 to 1), evidence (exact "
+                "supporting chat quote), special_remarks (short note or null). Example: "
+                '[{"owner":"Amit","commitment":"Complete PostgreSQL migration",'
+                '"committed_date":null,"deadline":"Friday","status":"pending",'
+                '"confidence":0.96,"evidence":"I\'ll complete the PostgreSQL migration by Friday.",'
+                '"special_remarks":null}]. Use [] if no commitments. Never invent a date, '
+                "owner, status, confidence, or evidence. Only set committed_date when "
+                "a timestamp is present on the message that made the commitment."
             ),
             height=210,
         )
@@ -397,17 +501,211 @@ elif selected_tab == "Output Interface":
                 display_rows = [
                     {
                         "Commitment": item["commitment"],
-                        "Committer": item["committer_name"],
+                        "Owner": item["owner"],
+                        "Committed date": item["committed_date"],
+                        "Deadline": item["deadline"],
                         "Status": item["status"],
-                        "Expected done date": item["expected_done_date"],
+                        "Confidence": (
+                            "{:.0%}".format(item["confidence"])
+                            if item["confidence"] is not None
+                            else "Not specified"
+                        ),
                         "Special remarks": item["special_remarks"],
-                        "Chat proof": item["proof"],
+                        "Evidence": item["evidence"],
                     }
                     for item in commitments
                 ]
                 st.table(display_rows)
             else:
                 st.info("The AI found no commitments supported by the provided chat.")
+
+            st.markdown("### Participant status profiles")
+            st.caption(
+                "Open a participant to see their AI-assigned work, grouped by status."
+            )
+            status_order = ("Done", "In Progress", "Pending", "Blocked", "Unclear")
+            participant_keys = set(
+                participant.strip().casefold() for participant in participants
+            )
+            assigned_work = []
+
+            for participant in participants:
+                participant_work = [
+                    item for item in commitments
+                    if item["owner"].strip().casefold()
+                    == participant.strip().casefold()
+                ]
+                grouped_work = dict((status, []) for status in status_order)
+                for item in participant_work:
+                    grouped_work[commitment_status_bucket(item["status"])].append(item)
+
+                counts = [
+                    "{} {}".format(len(grouped_work[status]), status.lower())
+                    for status in status_order
+                    if grouped_work[status]
+                ]
+                title = participant
+                if counts:
+                    title += " — " + ", ".join(counts)
+                else:
+                    title += " — no assigned work"
+
+                with st.expander(title):
+                    metric_cols = st.columns(len(status_order))
+                    for index, status in enumerate(status_order):
+                        metric_cols[index].metric(
+                            status, str(len(grouped_work[status]))
+                        )
+
+                    if not participant_work:
+                        st.info(
+                            "No commitments were assigned to this participant in the AI results."
+                        )
+                    for status in status_order:
+                        status_work = grouped_work[status]
+                        if status_work:
+                            st.markdown("#### {}".format(status))
+                            for item in status_work:
+                                st.markdown("**{}**".format(item["commitment"]))
+                                st.write(
+                                    "Committed date: {}".format(
+                                        item["committed_date"]
+                                    )
+                                )
+                                st.write(
+                                    "Deadline: {}".format(item["deadline"])
+                                )
+                                if item["confidence"] is not None:
+                                    st.write(
+                                        "Confidence: {:.0%}".format(
+                                            item["confidence"]
+                                        )
+                                    )
+                                if item["special_remarks"] != "Not specified":
+                                    st.write(
+                                        "Remark: {}".format(
+                                            item["special_remarks"]
+                                        )
+                                    )
+                                st.caption("Evidence: {}".format(item["evidence"]))
+
+            for item in commitments:
+                assignee = item["owner"].strip().casefold()
+                if assignee not in participant_keys:
+                    assigned_work.append(item)
+
+            if assigned_work:
+                with st.expander(
+                    "Unassigned or unmatched work ({})".format(len(assigned_work))
+                ):
+                    st.caption(
+                        "The AI assignee was not an exact match for a participant name "
+                        "in the extracted chat."
+                    )
+                    for item in assigned_work:
+                        st.markdown(
+                            "**{}** — {} · {}".format(
+                                item["commitment"],
+                                item["owner"],
+                                commitment_status_bucket(item["status"]),
+                            )
+                        )
+                        st.caption("Evidence: {}".format(item["evidence"]))
+
+elif selected_tab == "Dummy Analysis":
+    st.subheader("Sample AI Commitment Analysis")
+    st.caption(
+        "Preview of the structured Gemma/Gemini response, grouped by owner. "
+        "The committed date is shown as unavailable because it is not present in the sample."
+    )
+    sample_commitments = parse_commitments(
+        """
+        [
+          {
+            "owner": "Amit",
+            "commitment": "Complete PostgreSQL migration",
+            "deadline": "Friday",
+            "status": "pending",
+            "confidence": 0.96,
+            "evidence": "I'll complete the PostgreSQL migration by Friday."
+          },
+          {
+            "owner": "Amit",
+            "commitment": "Check authentication API",
+            "deadline": "Tomorrow",
+            "status": "pending",
+            "confidence": 0.91,
+            "evidence": "Yes, I'll do that tomorrow."
+          },
+          {
+            "owner": "Priya",
+            "commitment": "Review migration",
+            "deadline": null,
+            "status": "pending",
+            "confidence": 0.89,
+            "evidence": "I'll review the migration once it's ready."
+          }
+        ]
+        """
+    )
+    sample_owners = sorted(set(item["owner"] for item in sample_commitments))
+    pending_count = sum(
+        1
+        for item in sample_commitments
+        if commitment_status_bucket(item["status"]) == "Pending"
+    )
+    st.markdown(
+        """
+        <div class="demo-metrics">
+            <div class="demo-metric demo-metric--blue">
+                <strong>{}</strong><span>Total commitments</span>
+            </div>
+            <div class="demo-metric demo-metric--orange">
+                <strong>{}</strong><span>Owners</span>
+            </div>
+            <div class="demo-metric demo-metric--green">
+                <strong>{}</strong><span>Pending tasks</span>
+            </div>
+        </div>
+        """.format(len(sample_commitments), len(sample_owners), pending_count),
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Commitments by owner")
+    for owner in sample_owners:
+        owner_items = [
+            item for item in sample_commitments if item["owner"] == owner
+        ]
+        table_rows = "".join(
+            "<tr><td>{}</td><td>{}</td><td>{}</td>"
+            '<td><span class="demo-status">{}</span></td>'
+            '<td><span class="demo-confidence">{}</span></td>'
+            "<td>{}</td><td>{}</td></tr>".format(
+                escape(item["commitment"]),
+                escape(item["committed_date"]),
+                escape(item["deadline"]),
+                escape(item["status"].title()),
+                (
+                    "{:.0%}".format(item["confidence"])
+                    if item["confidence"] is not None
+                    else "Not specified"
+                ),
+                escape(item["special_remarks"]),
+                escape(item["evidence"]),
+            )
+            for item in owner_items
+        )
+        st.markdown(
+            '<div class="demo-owner">👤 {}</div>'
+            '<div class="demo-table-wrap"><table class="demo-table">'
+            "<thead><tr><th>Committed task</th><th>Committed date</th>"
+            "<th>Deadline</th><th>Status</th><th>Confidence</th>"
+            "<th>Special remarks</th><th>Chat evidence</th></tr></thead>"
+            "<tbody>{}</tbody></table></div>".format(
+                escape(owner), table_rows
+            ),
+            unsafe_allow_html=True,
+        )
 
 # ---------- Footer ----------
 st.markdown("---")

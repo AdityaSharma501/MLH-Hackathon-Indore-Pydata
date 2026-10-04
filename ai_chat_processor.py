@@ -95,8 +95,8 @@ def _chat_prompt(
     )
 
 
-def parse_commitments(response: str) -> List[Dict[str, str]]:
-    """Parse Gemini's JSON commitments into consistent table rows."""
+def parse_commitments(response: str) -> List[Dict[str, Any]]:
+    """Parse AI commitment records into the app's stable output schema."""
     content = response.strip()
     fenced_match = re.match(
         r"^```(?:json)?\s*(.*?)\s*```$", content, flags=re.IGNORECASE | re.DOTALL
@@ -116,26 +116,42 @@ def parse_commitments(response: str) -> List[Dict[str, str]]:
     if not isinstance(parsed, list):
         raise ValueError("The AI response must contain a JSON list of commitments.")
 
-    columns = (
-        "commitment",
-        "committer_name",
-        "status",
-        "expected_done_date",
-        "special_remarks",
-        "proof",
-    )
     rows = []
     for item in parsed:
         if not isinstance(item, dict):
             raise ValueError("Each AI commitment must be a JSON object.")
-        row = {}
-        for column in columns:
-            value = item.get(column)
-            row[column] = (
+        owner = item.get("owner", item.get("committer_name"))
+        deadline = item.get("deadline", item.get("expected_done_date"))
+        remarks = item.get("special_remarks")
+        evidence = item.get("evidence", item.get("proof"))
+        raw_confidence = item.get("confidence")
+        if raw_confidence is None or raw_confidence == "":
+            confidence = None
+        else:
+            try:
+                confidence = float(raw_confidence)
+            except (TypeError, ValueError) as error:
+                raise ValueError("Commitment confidence must be a number from 0 to 1.") from error
+            if not 0 <= confidence <= 1:
+                raise ValueError("Commitment confidence must be between 0 and 1.")
+
+        def display_value(value: Any) -> str:
+            return (
                 str(value).strip()
                 if value is not None and str(value).strip()
                 else "Not specified"
             )
+
+        row = {
+            "owner": display_value(owner),
+            "commitment": display_value(item.get("commitment")),
+            "committed_date": display_value(item.get("committed_date")),
+            "deadline": display_value(deadline),
+            "status": display_value(item.get("status")),
+            "confidence": confidence,
+            "special_remarks": display_value(remarks),
+            "evidence": display_value(evidence),
+        }
         rows.append(row)
     return rows
 
